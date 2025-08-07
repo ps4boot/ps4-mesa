@@ -164,18 +164,6 @@ diff -ruN mesa/src/amd/compiler/aco_print_asm.cpp mesa-patched/src/amd/compiler/
        case CHIP_HAWAII: return "hawaii";
        default: return nullptr;
        }
-diff -ruN mesa/src/amd/compiler/tests/helpers.cpp mesa-patched/src/amd/compiler/tests/helpers.cpp
---- mesa/src/amd/compiler/tests/helpers.cpp	2025-07-27 11:41:09.765087504 +0200
-+++ mesa-patched/src/amd/compiler/tests/helpers.cpp	2025-07-27 11:55:49.901647580 +0200
-@@ -134,6 +134,8 @@
-       switch (gfx_level) {
-       case GFX6: family = CHIP_TAHITI; break;
-       case GFX7: family = CHIP_BONAIRE; break;
-+      case GFX7: family = CHIP_GLADIUS; break;
-+      case GFX7: family = CHIP_LIVERPOOL; break;
-       case GFX8: family = CHIP_POLARIS10; break;
-       case GFX9: family = CHIP_VEGA10; break;
-       case GFX10: family = CHIP_NAVI10; break;
 diff -ruN mesa/src/amd/vulkan/meta/radv_meta_fast_clear.c mesa-patched/src/amd/vulkan/meta/radv_meta_fast_clear.c
 --- mesa/src/amd/vulkan/meta/radv_meta_fast_clear.c	2025-07-27 11:41:09.837797227 +0200
 +++ mesa-patched/src/amd/vulkan/meta/radv_meta_fast_clear.c	2025-07-27 11:44:26.302636594 +0200
