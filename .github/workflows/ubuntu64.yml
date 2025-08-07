@@ -1,0 +1,442 @@
+name: Build Mesa 64
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-and-cache-spirv:
+    runs-on: ubuntu-latest
+    name: Build/cache SPIRV-Tools & cache Mesa,libdrm, xf86
+
+    steps:
+      - name: Fetch latest release tags
+        id: fetch-latest-release
+        run: |
+          latest_tag=$(curl -s "https://gitlab.freedesktop.org/api/v4/projects/176/repository/tags" | jq -r '.[0].name')
+          echo "LATEST_TAG=$latest_tag" >> $GITHUB_ENV
+          latestdrm_tag=$(curl -s "https://gitlab.freedesktop.org/api/v4/projects/177/repository/tags" | jq -r '.[0].name')
+          echo "LATESTDRM_TAG=$latestdrm_tag" >> $GITHUB_ENV
+          latestxf86_tag=$(curl -s "https://gitlab.freedesktop.org/api/v4/projects/593/repository/tags" | jq -r '.[0].name')
+          echo "LATESTXF86_TAG=$latestxf86_tag" >> $GITHUB_ENV
+          latestw_tag=$(curl -s "https://gitlab.freedesktop.org/api/v4/projects/121/repository/tags" | jq -r '.[0].name')
+          echo "LATESTW_TAG=$latestw_tag" >> $GITHUB_ENV
+          latestwp_tag=$(curl -s "https://gitlab.freedesktop.org/api/v4/projects/2891/repository/tags" | jq -r '.[0].name')
+          echo "LATESTWP_TAG=$latestwp_tag" >> $GITHUB_ENV
+          latestst_tag=$(curl -s "https://api.github.com/repos/KhronosGroup/SPIRV-Tools/releases/latest" | jq -r '.tag_name')
+          echo "LATESTST_TAG=$latestst_tag" >> $GITHUB_ENV
+    
+      - name: Cache SPIRV-Tools
+        id: cache-spirv
+        uses: actions/cache@v4
+        with:
+          path: ~/spirv-tools-install
+          key: spirv-tools-${{ env.LATESTST_TAG }}
+
+      - name: Build SPIRV-Tools if not cached
+        if: steps.cache-spirv.outputs.cache-hit != 'true'
+        run: |
+          sudo apt update
+          sudo apt install -y cmake python3 git g++ pkg-config ninja-build
+          wget https://github.com/KhronosGroup/SPIRV-Tools/archive/refs/tags/${{ env.LATESTST_TAG }}.zip
+          unzip ${{ env.LATESTST_TAG }}.zip
+          mv SPIRV-Tools-* SPIRV-Tools
+          cd SPIRV-Tools
+          python3 utils/git-sync-deps
+          mkdir build && cd build
+          cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$HOME/spirv-tools-install
+          make -j$(nproc)
+          make install
+          
+      - name: Cache Mesa repository
+        id: cache-mesa
+        uses: actions/cache@v4
+        with:
+          path: ./mesa
+          key: ${{ env.LATEST_TAG }}
+
+      - name: Clone Mesa repository if not cached
+        if: steps.cache-mesa.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p mesa
+          curl -L "https://gitlab.freedesktop.org/mesa/mesa/-/archive/${{ env.LATEST_TAG }}/${{ env.LATEST_TAG }}.tar.gz" | tar -xzvf - -C mesa --strip-components=1
+
+      - name: Cache libdrm repository
+        id: cache-libdrm
+        uses: actions/cache@v4
+        with:
+          path: ./libdrm
+          key: ${{ env.LATESTDRM_TAG }}
+
+      - name: Clone libdrm repository if not cached
+        if: steps.cache-libdrm.outputs.cache-hit != 'true'
+        run: |
+         mkdir -p libdrm
+         curl -L "https://gitlab.freedesktop.org/mesa/drm/-/archive/${{ env.LATESTDRM_TAG }}/drm-${{ env.LATESTDRM_TAG }}.tar.gz" | tar -xzvf - -C libdrm --strip-components=1
+          
+      - name: Cache xf86 repository
+        id: cache-xf86
+        uses: actions/cache@v4
+        with:
+          path: ./xf86-video-amdgpu
+          key: ${{ env.LATESTXF86_TAG }}
+
+      - name: Clone xf86-video-amdgpu repository if not cached
+        if: steps.cache-xf86.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p xf86-video-amdgpu
+          curl -L "https://gitlab.freedesktop.org/xorg/driver/xf86-video-amdgpu/-/archive/${{ env.LATESTXF86_TAG }}/xf86-video-amdgpu-${{ env.LATESTXF86_TAG }}.tar.gz" | tar -xzvf - -C xf86-video-amdgpu --strip-components=1
+
+      - name: Cache wayland repository
+        id: cache-wayland
+        uses: actions/cache@v4
+        with:
+          path: ./wayland
+          key: wayland-${{ env.LATESTW_TAG }}
+
+      - name: Clone wayland repository if not cached
+        if: steps.cache-wayland.outputs.cache-hit != 'true'
+        run: |
+          curl -L "https://gitlab.freedesktop.org/wayland/wayland/-/archive/${{ env.LATESTW_TAG }}/wayland-${{ env.LATESTWP_TAG }}.tar.gz" | tar -xzvf -
+          mv wayland-* wayland
+
+      - name: Cache wayland-protocol repository
+        id: cache-waylandP
+        uses: actions/cache@v4
+        with:
+          path: ./wayland-protocols
+          key: wayland-protocols-${{ env.LATESTWP_TAG }}
+
+      - name: Clone wayland repository if not cached
+        if: steps.cache-waylandP.outputs.cache-hit != 'true'
+        run: |
+          curl -L "https://gitlab.freedesktop.org/wayland/wayland-protocols/-/archive/${{ env.LATESTWP_TAG }}/wayland-protocols-${{ env.LATESTWP_TAG }}.tar.gz" | tar -xzvf -
+          mv wayland-protocols-* wayland-protocols
+          
+  build-mesa-ps4:
+    needs: build-and-cache-spirv
+    runs-on: ubuntu-latest
+    name: Build Mesa and Components for PS4
+
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@v4
+
+      - name: Fetch latest release tags
+        id: fetch-latest-release
+        run: |
+          latest_tag=$(curl -s "https://gitlab.freedesktop.org/api/v4/projects/176/repository/tags" | jq -r '.[0].name')
+          echo "LATEST_TAG=$latest_tag" >> $GITHUB_ENV
+          latestdrm_tag=$(curl -s "https://gitlab.freedesktop.org/api/v4/projects/177/repository/tags" | jq -r '.[0].name')
+          echo "LATESTDRM_TAG=$latestdrm_tag" >> $GITHUB_ENV
+          latestxf86_tag=$(curl -s "https://gitlab.freedesktop.org/api/v4/projects/593/repository/tags" | jq -r '.[0].name')
+          echo "LATESTXF86_TAG=$latestxf86_tag" >> $GITHUB_ENV
+          latestw_tag=$(curl -s "https://gitlab.freedesktop.org/api/v4/projects/121/repository/tags" | jq -r '.[0].name')
+          echo "LATESTW_TAG=$latestw_tag" >> $GITHUB_ENV
+          latestwp_tag=$(curl -s "https://gitlab.freedesktop.org/api/v4/projects/2891/repository/tags" | jq -r '.[0].name')
+          echo "LATESTWP_TAG=$latestwp_tag" >> $GITHUB_ENV
+          latestst_tag=$(curl -s "https://api.github.com/repos/KhronosGroup/SPIRV-Tools/releases/latest" | jq -r '.tag_name')
+          echo "LATESTST_TAG=$latestst_tag" >> $GITHUB_ENV
+
+      - name: Enable source repositories
+        run: |
+          source /etc/os-release
+          echo "deb-src http://azure.archive.ubuntu.com/ubuntu $VERSION_CODENAME main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
+          echo "deb-src http://azure.archive.ubuntu.com/ubuntu $VERSION_CODENAME-updates main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
+          echo "deb-src http://security.ubuntu.com/ubuntu $VERSION_CODENAME-security main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
+          sudo apt update
+
+      - name: Install dependencies
+        run: |
+            sudo apt build-dep mesa -y
+            sudo apt install -y \
+            build-essential \
+            glslang-tools \
+            libelf-dev \
+            liblua5.4-dev \
+            libclang-19-dev \
+            clang-tools-19 \
+            libclc-19-dev \
+            libclang-cpp19 \
+            libudev-dev \
+            libvdpau1 \
+            libunwind-dev \
+            llvm-19-dev \
+            llvm-spirv-19 \
+            spirv-tools \
+            libllvmspirvlib-19-dev \
+            meson-1.5 \
+            xutils-dev \
+            ninja-build \
+            python3-pip \
+            python3-setuptools \
+            python3-mako \
+            libdrm-dev \
+            libgbm-dev \
+            libegl-dev \
+            libgles2-mesa-dev \
+            libwayland-dev \
+            libwayland-egl-backend-dev \
+            wayland-protocols \
+            libxcb-randr0-dev \
+            xorg-dev \
+            xserver-xorg-dev \
+            libpciaccess-dev \
+            autoconf \
+            automake \
+            libtool \
+            graphviz \
+            libgraphviz-dev \
+            doxygen \
+            xsltproc \
+            xmlto \
+            zstd \
+            cargo
+            cargo install bindgen-cli
+
+      - name: Restore SPIRV-Tools cache
+        uses: actions/cache@v4
+        with:
+          path: ~/spirv-tools-install
+          key: spirv-tools-${{ env.LATESTST_TAG }}
+          
+      - name: Set environment paths for SPIRV-Tools/bindgen
+        run: |
+          echo "$HOME/spirv-tools-install/bin" >> $GITHUB_PATH
+          echo "CMAKE_PREFIX_PATH=$HOME/spirv-tools-install" >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=$HOME/spirv-tools-install/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Restore wayland cache
+        uses: actions/cache@v4
+        with:
+          path: ./wayland
+          key: wayland-${{ env.LATESTW_TAG }}
+          
+      - name: Install wayland
+        run: |
+          cd wayland
+          mkdir build
+          meson setup build --buildtype=release --prefix=/usr
+          meson configure build
+          ninja -C build
+          sudo ninja -C build install
+
+      - name: Restore wayland protocols cache
+        uses: actions/cache@v4
+        with:
+          path: ./wayland-protocols
+          key: wayland-protocols-${{ env.LATESTWP_TAG }}
+          
+      - name: Install wayland protocols
+        run: |
+          cd wayland-protocols
+          mkdir build
+          meson setup build --buildtype=release --prefix=/usr
+          meson configure build
+          ninja -C build
+          sudo ninja -C build install
+   
+      - name: Restore Mesa repository cache
+        id: restore-mesa
+        uses: actions/cache@v4
+        with:
+          path: ./mesa
+          key: ${{ env.LATEST_TAG }}
+
+      - name: Restore libdrm repository cache
+        id: restore-libdrm
+        uses: actions/cache@v4
+        with:
+          path: ./libdrm
+          key: ${{ env.LATESTDRM_TAG }}
+
+      - name: Restore xf86 repository cache
+        id: restore-xf86
+        uses: actions/cache@v4
+        with:
+          path: ./xf86-video-amdgpu
+          key: ${{ env.LATESTXF86_TAG }}
+
+      - name: Copy patches
+        working-directory: ./patches
+        run: |
+          cp mesa.patch ../mesa
+          cp libdrm.patch ../libdrm
+          cp xf86-video-amdgpu.patch ../xf86-video-amdgpu
+
+      - name: Patch Mesa
+        working-directory: ./mesa
+        run: |
+          patch  -Np1 < mesa.patch
+          
+      - name: Build Mesa
+        working-directory: ./mesa
+        run: |
+          mkdir build64
+          meson setup build64 \
+            --buildtype=release \
+            -Dprefix=/usr \
+            -Dplatforms=x11,wayland \
+            -Dvulkan-beta=true \
+            -Dvulkan-drivers=amd,swrast,virtio \
+            -Dvulkan-layers=device-select,overlay,screenshot \
+            -Dbuild-aco-tests=true \
+            -Dgallium-rusticl=true \
+            -Dgallium-extra-hud=true \
+            -Dgallium-drivers=radeonsi,r600,zink,virgl,softpipe,llvmpipe \
+            -Dgallium-nine=true \
+            -Dgallium-vdpau=enabled \
+            -Dgallium-va=enabled \
+            -Dopengl=true \
+            -Dglx=auto \
+            -Dgles1=enabled \
+            -Dgles2=enabled \
+            -Degl=enabled \
+            -Dllvm=auto \
+            -Dlmsensors=enabled \
+            -Dtools=glsl,nir \
+            -Dgbm=enabled \
+            -Dlibunwind=enabled \
+            -Dvideo-codecs=all \
+            -Dlegacy-x11=dri2 \
+            -Dzstd=enabled \
+            -Damd-use-llvm=true \
+            -Dspirv-to-dxil=true \
+            -Dstatic-libclc=all \
+            -Dmesa-clc=enabled \
+            -Dinstall-mesa-clc=true \
+            -Dinstall-precomp-compiler=true \
+            -Dosmesa=true \
+            -Dprecomp-compiler=enabled \
+            -Dmicrosoft-clc=disabled \
+            -Dvalgrind=enabled \
+            -Dshader-cache=enabled \
+            -Dshader-cache-max-size=8G \
+            -Dglvnd=disabled
+          meson configure build64
+          ninja -C build64
+          DESTDIR="$PWD/package-root" ninja -C build64 install
+
+      - name: Compress install directory
+        working-directory: ./mesa/package-root
+        run: |
+          tar -I 'zstd -19 -T0' -cf ../../${{ env.LATEST_TAG }}-build64-PS4.tzst *
+
+      - name: Upload mesa-build64.tar.zst as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.LATEST_TAG }}-build64-PS4.tzst
+          path: ${{ env.LATEST_TAG }}-build64-PS4.tzst
+
+      - name: Create control file/DEB
+        working-directory: ./mesa
+        run: |
+          mkdir -p package-root/DEBIAN
+          cat <<EOF > package-root/DEBIAN/control
+          Package: ${{ env.LATEST_TAG }}
+          Version: 42069-${{ env.LATEST_TAG }}-PS4
+          Architecture: amd64
+          Maintainer: Your Name <youremail@example.com>
+          Description: Mesa graphics library for PS4
+          EOF
+          dpkg-deb --build package-root ../${{ env.LATEST_TAG }}-PS4.deb
+
+      - name: Upload mesa.deb as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.LATEST_TAG }}-PS4.deb
+          path: ${{ env.LATEST_TAG }}-PS4.deb
+
+      - name: Patch libdrm
+        working-directory: ./libdrm
+        run: | 
+          patch  -Np1 < libdrm.patch
+
+      - name: build libdrm
+        working-directory: ./libdrm
+        run: | 
+          mkdir build64
+          meson setup build64 -Dsysconfdir=/etc -Dprefix=/usr --buildtype plain -Dudev=true -D valgrind=enabled -D intel=enabled
+          meson configure build64
+          ninja -C build64
+          DESTDIR="$PWD/package-root" ninja -C build64 install
+
+      - name: Compress install directory
+        working-directory: ./libdrm/package-root
+        run: |
+          tar -I 'zstd -19 -T0' -cf ../../${{ env.LATESTDRM_TAG }}-build64-PS4.tzst *
+
+      - name: Upload libdrm-build64.tar.zst as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.LATESTDRM_TAG }}-build64-PS4.tzst
+          path: ${{ env.LATESTDRM_TAG }}-build64-PS4.tzst
+
+
+      - name: Create control file/DEB
+        working-directory: ./libdrm
+        run: |
+          mkdir -p package-root/DEBIAN
+          cat <<EOF > package-root/DEBIAN/control
+          Package: ${{ env.LATESTDRM_TAG }}
+          Version: 42069-${{ env.LATESTDRM_TAG }}-PS4
+          Architecture: amd64
+          Maintainer: Your Name <youremail@example.com>
+          Description: libdrm for PS4
+          EOF
+          dpkg-deb --build package-root ../${{ env.LATESTDRM_TAG }}-PS4.deb
+
+      - name: Upload libdrm.deb as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.LATESTDRM_TAG }}-PS4.deb
+          path: ${{ env.LATESTDRM_TAG }}-PS4.deb
+
+      - name: Patch xf86
+        working-directory: ./xf86-video-amdgpu
+        run: | 
+          patch  -Np1 < xf86-video-amdgpu.patch
+
+      - name: build xf86
+        working-directory: ./xf86-video-amdgpu
+        run: | 
+          mkdir build64
+          echo "CFLAGS=${CFLAGS/-fno-plt/}" >> $GITHUB_ENV
+          echo "CXXFLAGS=${CXXFLAGS/-fno-plt/}" >> $GITHUB_ENV
+          echo "LDFLAGS=${LDFLAGS/,-z,now/}" >> $GITHUB_ENV
+          source ~/.bashrc
+          ./autogen.sh
+          ./configure --prefix=/usr --enable-glamor
+          make -j$(nproc)
+          make DESTDIR="$PWD/package-root" install
+
+      - name: Compress install directory
+        working-directory: ./xf86-video-amdgpu/package-root
+        run: |
+          tar -I 'zstd -19 -T0' -cf ../../${{ env.LATESTXF86_TAG }}-build64-PS4.tzst *
+
+      - name: Upload mesa-build64.tar.zst as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.LATESTXF86_TAG }}-build64-PS4.tzst
+          path: ${{ env.LATESTXF86_TAG }}-build64-PS4.tzst
+
+      - name: Create control file/DEB
+        working-directory: ./xf86-video-amdgpu
+        run: |
+          mkdir -p package-root/DEBIAN
+          cat <<EOF > package-root/DEBIAN/control
+          Package: ${{ env.LATESTXF86_TAG }}
+          Version: 42069-${{ env.LATESTXF86_TAG }}-PS4
+          Architecture: amd64
+          Maintainer: Your Name <youremail@example.com>
+          Description: xf86-video-amdgpu for PS4
+          EOF
+          dpkg-deb --build package-root ../${{ env.LATESTXF86_TAG }}-PS4.deb
+
+      - name: Upload xf86-video-amdgpu.deb as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.LATESTXF86_TAG }}-PS4.deb
+          path: ${{ env.LATESTXF86_TAG }}-PS4.deb      
+          

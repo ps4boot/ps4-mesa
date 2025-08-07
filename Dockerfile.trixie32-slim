@@ -1,0 +1,84 @@
+# Base image
+FROM i386/debian:trixie-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PATH="/root/.cargo/bin:$PATH"
+
+RUN echo "deb-src http://deb.debian.org/debian trixie main contrib non-free non-free-firmware" >> /etc/apt/sources.list && \
+    echo "deb-src http://security.debian.org/debian-security trixie-security main contrib non-free non-free-firmware" >> /etc/apt/sources.list && \
+    echo "deb-src http://deb.debian.org/debian trixie-updates main contrib non-free non-free-firmware" >> /etc/apt/sources.list && \
+    apt update && apt install -y wget gpg
+
+RUN wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | gpg --dearmor -o /etc/apt/trusted.gpg.d/llvm.gpg && \
+    echo "deb http://apt.llvm.org/bookworm/ llvm-toolchain-bookworm-19 main" >> /etc/apt/sources.list && \
+    apt update && \
+    apt install --no-install-recommends -y \
+        git \
+        build-essential \
+        glslang-tools \
+        liblua5.4-dev \
+        libclang-cpp19-dev \
+        libclang-19-dev \
+        clang-19 \
+        clang-tools-19 \
+        libclang-19-dev \
+        llvm-19-dev \
+        libclc-19-dev \
+        libllvmspirvlib-19-dev \
+        libxcb-shm0-dev \
+        libelf-dev \
+        libudev-dev \
+        libvdpau1 \
+        libva-dev \
+        libunwind-dev \
+        libxcb-glx0-dev \
+        libxcb-keysyms1-dev \
+        libx11-xcb-dev \
+        libxcb-dri2-0-dev \
+        libxcb-dri3-dev \
+        libxcb-present-dev \
+        libxshmfence-dev \
+        libsensors-dev \
+        meson \
+        bison \
+        flex \
+        byacc \
+        valgrind \
+        xutils-dev \
+        ninja-build \
+        python3-pip \
+        python3-setuptools \
+        python3-mako \
+        libvdpau-dev \
+        libdrm-dev \
+        libgbm-dev \
+        libegl-dev \
+        libgles2-mesa-dev \
+        libwayland-dev \
+        libwayland-egl-backend-dev \
+        wayland-protocols \
+        libxcb-randr0-dev \
+        xorg-dev \
+        xserver-xorg-dev \
+        libpciaccess-dev \
+        autoconf \
+        automake \
+        libtool \
+        cmake \
+        g++ \
+        pkg-config \
+        cargo \
+        zstd && \
+        apt-get clean && \
+        rm -rf /var/lib/apt/lists/* && \
+        cargo install bindgen-cli && \
+        git clone https://github.com/KhronosGroup/SPIRV-Tools.git --recursive && \
+        cd SPIRV-Tools && \
+        git submodule update --init && \
+        python3 utils/git-sync-deps && \
+        mkdir build && cd build && \
+        cmake .. -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=Release && \
+        make -j$(nproc) && \
+        make install && \
+        cd ../.. && rm -rf SPIRV-Tools
+        

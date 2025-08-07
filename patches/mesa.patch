@@ -1,0 +1,269 @@
+diff -ruN mesa/include/pci_ids/radeonsi_pci_ids.h mesa-patched/include/pci_ids/radeonsi_pci_ids.h
+--- mesa/include/pci_ids/radeonsi_pci_ids.h	2025-07-27 11:41:09.637971017 +0200
++++ mesa-patched/include/pci_ids/radeonsi_pci_ids.h	2025-07-27 11:44:26.297019094 +0200
+@@ -157,3 +157,8 @@
+ CHIPSET(0x67B9, HAWAII)
+ CHIPSET(0x67BA, HAWAII)
+ CHIPSET(0x67BE, HAWAII)
++
++CHIPSET(0x9920, LIVERPOOL)
++CHIPSET(0x9922, LIVERPOOL)
++CHIPSET(0x9923, LIVERPOOL)
++CHIPSET(0x9924, GLADIUS)
+diff -ruN mesa/src/amd/addrlib/src/amdgpu_asic_addr.h mesa-patched/src/amd/addrlib/src/amdgpu_asic_addr.h
+--- mesa/src/amd/addrlib/src/amdgpu_asic_addr.h	2025-07-27 11:41:09.660953461 +0200
++++ mesa-patched/src/amd/addrlib/src/amdgpu_asic_addr.h	2025-07-27 11:44:26.297548565 +0200
+@@ -62,7 +62,11 @@
+ #define AMDGPU_HAWAII_RANGE     0x28, 0x3C //# 40 <= x < 60
+ 
+ #define AMDGPU_SPECTRE_RANGE    0x01, 0x41 //#   1 <= x < 65
+-#define AMDGPU_SPOOKY_RANGE     0x41, 0x81 //#  65 <= x < 129
++#define AMDGPU_SPOOKY_RANGE     0x41, 0x61
++
++#define AMDGPU_STARSHA_RANGE    0x61, 0x71 // Sony Playstation 4
++#define AMDGPU_STARSHP_RANGE    0x71, 0x81 // Sony Playstation 4 Pro
++
+ #define AMDGPU_KALINDI_RANGE    0x81, 0xA1 //# 129 <= x < 161
+ #define AMDGPU_GODAVARI_RANGE   0xA1, 0xFF //# 161 <= x < max
+ 
+@@ -134,6 +138,9 @@
+ #define ASICREV_IS_BONAIRE_M(r)        ASICREV_IS(r, BONAIRE)
+ #define ASICREV_IS_HAWAII_P(r)         ASICREV_IS(r, HAWAII)
+ 
++#define ASICREV_IS_STARSHA(r)          ASICREV_IS(r, STARSHA)
++#define ASICREV_IS_STARSHP(r)          ASICREV_IS(r, STARSHP)
++
+ #define ASICREV_IS_SPECTRE(r)          ASICREV_IS(r, SPECTRE)
+ #define ASICREV_IS_SPOOKY(r)           ASICREV_IS(r, SPOOKY)
+ #define ASICREV_IS_KALINDI(r)          ASICREV_IS(r, KALINDI)
+diff -ruN mesa/src/amd/addrlib/src/r800/ciaddrlib.cpp mesa-patched/src/amd/addrlib/src/r800/ciaddrlib.cpp
+--- mesa/src/amd/addrlib/src/r800/ciaddrlib.cpp	2025-07-27 11:41:09.677796644 +0200
++++ mesa-patched/src/amd/addrlib/src/r800/ciaddrlib.cpp	2025-07-27 11:44:26.298456489 +0200
+@@ -373,6 +373,8 @@
+             m_settings.isSpectre    = ASICREV_IS_SPECTRE(uChipRevision);
+             m_settings.isSpooky     = ASICREV_IS_SPOOKY(uChipRevision);
+             m_settings.isKalindi    = ASICREV_IS_KALINDI(uChipRevision);
++//          m_settings.isLiverpool  = ASICREV_IS_LIVERPOOL(uChipRevision);
++//          m_settings.isGladius    = ASICREV_IS_GLADIUS(uChipRevision);
+             break;
+         case FAMILY_VI:
+             m_settings.isVolcanicIslands = 1;
+diff -ruN mesa/src/amd/addrlib/src/r800/siaddrlib.h mesa-patched/src/amd/addrlib/src/r800/siaddrlib.h
+--- mesa/src/amd/addrlib/src/r800/siaddrlib.h	2025-07-27 11:41:09.679796651 +0200
++++ mesa-patched/src/amd/addrlib/src/r800/siaddrlib.h	2025-07-27 11:44:26.299191334 +0200
+@@ -55,6 +55,8 @@
+     UINT_32 isSeaIsland       : 1;
+     UINT_32 isBonaire         : 1;
+     UINT_32 isKaveri          : 1;
++    UINT_32 isLiverpool       : 1;
++    UINT_32 isGladius         : 1;
+     UINT_32 isSpectre         : 1;
+     UINT_32 isSpooky          : 1;
+     UINT_32 isKalindi         : 1;
+diff -ruN mesa/src/amd/common/ac_gpu_info.c mesa-patched/src/amd/common/ac_gpu_info.c
+--- mesa/src/amd/common/ac_gpu_info.c	2025-07-27 11:41:09.691796695 +0200
++++ mesa-patched/src/amd/common/ac_gpu_info.c	2025-07-27 11:44:26.300234757 +0200
+@@ -731,6 +731,8 @@
+       case FAMILY_KV:
+          identify_chip2(SPECTRE, KAVERI);
+          identify_chip2(SPOOKY, KAVERI);
++	 identify_chip2(STARSHA, LIVERPOOL);
++      	 identify_chip2(STARSHP, GLADIUS);
+          identify_chip2(KALINDI, KABINI);
+          identify_chip2(GODAVARI, KABINI);
+          break;
+@@ -1069,6 +1071,8 @@
+       case CHIP_VERDE:
+       case CHIP_HAINAN:
+       case CHIP_BONAIRE:
++      case CHIP_LIVERPOOL:
++      case CHIP_GLADIUS:
+       case CHIP_KAVERI:
+       case CHIP_ICELAND:
+       case CHIP_CARRIZO:
+@@ -2238,6 +2242,8 @@
+    case CHIP_PITCAIRN:
+    case CHIP_VERDE:
+    case CHIP_BONAIRE:
++   case CHIP_GLADIUS:
++   case CHIP_LIVERPOOL:
+    case CHIP_HAWAII:
+    case CHIP_TONGA:
+    case CHIP_FIJI:
+@@ -2288,6 +2294,14 @@
+       raster_config = 0x16000012;
+       raster_config_1 = 0x00000000;
+       break;
++   case CHIP_LIVERPOOL:
++      raster_config = 0x2a00161a;
++      raster_config_1 = 0x00000000;
++      break;
++   case CHIP_GLADIUS:
++      raster_config = 0x2a00161a;
++      raster_config_1 = 0x0000002e;
++      break;
+    /* 2 SEs / 8 RBs */
+    case CHIP_TAHITI:
+    case CHIP_PITCAIRN:
+diff -ruN mesa/src/amd/common/amd_family.c mesa-patched/src/amd/common/amd_family.c
+--- mesa/src/amd/common/amd_family.c	2025-07-27 11:41:09.717796790 +0200
++++ mesa-patched/src/amd/common/amd_family.c	2025-07-27 11:49:52.942318846 +0200
+@@ -19,6 +19,8 @@
+    CASE(OLAND);
+    CASE(HAINAN);
+    CASE(BONAIRE);
++   CASE(GLADIUS);
++   CASE(LIVERPOOL);
+    CASE(KABINI);
+    CASE(KAVERI);
+    CASE(HAWAII);
+@@ -86,7 +88,10 @@
+       return GFX8;
+    if (family >= CHIP_BONAIRE)
+       return GFX7;
+-
++   if (family == CHIP_LIVERPOOL)
++      return GFX7;
++   if (family == CHIP_GLADIUS)
++      return GFX7;
+    return GFX6;
+ }
+ 
+@@ -105,6 +110,10 @@
+       return "hainan";
+    case CHIP_BONAIRE:
+       return "bonaire";
++   case CHIP_LIVERPOOL:
++      return "bonaire";
++   case CHIP_GLADIUS:
++      return "bonaire";
+    case CHIP_KABINI:
+       return "kabini";
+    case CHIP_KAVERI:
+diff -ruN mesa/src/amd/common/amd_family.h mesa-patched/src/amd/common/amd_family.h
+--- mesa/src/amd/common/amd_family.h	2025-07-27 11:41:09.718796794 +0200
++++ mesa-patched/src/amd/common/amd_family.h	2025-07-27 11:44:26.301592932 +0200
+@@ -80,6 +80,8 @@
+    CHIP_HAINAN,
+    /* GFX7 (Sea Islands) */
+    CHIP_BONAIRE,
++   CHIP_LIVERPOOL,
++   CHIP_GLADIUS,
+    CHIP_KAVERI,
+    CHIP_KABINI,
+    CHIP_HAWAII,         /* Radeon 290, 390 */
+diff -ruN mesa/src/amd/compiler/aco_print_asm.cpp mesa-patched/src/amd/compiler/aco_print_asm.cpp
+--- mesa/src/amd/compiler/aco_print_asm.cpp	2025-07-27 11:41:09.750796910 +0200
++++ mesa-patched/src/amd/compiler/aco_print_asm.cpp	2025-07-27 12:01:57.509603265 +0200
+@@ -102,6 +102,8 @@
+       switch (family) {
+       case CHIP_BONAIRE: return "bonaire";
+       case CHIP_KAVERI: return "gfx700";
++      case CHIP_LIVERPOOL: return "liverpool";
++      case CHIP_GLADIUS: return "gladius";
+       case CHIP_HAWAII: return "hawaii";
+       default: return nullptr;
+       }
+diff -ruN mesa/src/amd/compiler/tests/helpers.cpp mesa-patched/src/amd/compiler/tests/helpers.cpp
+--- mesa/src/amd/compiler/tests/helpers.cpp	2025-07-27 11:41:09.765087504 +0200
++++ mesa-patched/src/amd/compiler/tests/helpers.cpp	2025-07-27 11:55:49.901647580 +0200
+@@ -134,6 +134,8 @@
+       switch (gfx_level) {
+       case GFX6: family = CHIP_TAHITI; break;
+       case GFX7: family = CHIP_BONAIRE; break;
++      case GFX7: family = CHIP_GLADIUS; break;
++      case GFX7: family = CHIP_LIVERPOOL; break;
+       case GFX8: family = CHIP_POLARIS10; break;
+       case GFX9: family = CHIP_VEGA10; break;
+       case GFX10: family = CHIP_NAVI10; break;
+diff -ruN mesa/src/amd/vulkan/meta/radv_meta_fast_clear.c mesa-patched/src/amd/vulkan/meta/radv_meta_fast_clear.c
+--- mesa/src/amd/vulkan/meta/radv_meta_fast_clear.c	2025-07-27 11:41:09.837797227 +0200
++++ mesa-patched/src/amd/vulkan/meta/radv_meta_fast_clear.c	2025-07-27 11:44:26.302636594 +0200
+@@ -326,7 +326,7 @@
+ 
+    switch (op) {
+    case FAST_CLEAR_ELIMINATE:
+-      pred_offset = image->fce_pred_offset;
++      pred_offset = 0; //Playstation 4
+       break;
+    case FMASK_DECOMPRESS:
+       pred_offset = 0; /* FMASK_DECOMPRESS is never predicated. */
+diff -ruN mesa/src/amd/vulkan/winsys/null/radv_null_winsys.c mesa-patched/src/amd/vulkan/winsys/null/radv_null_winsys.c
+--- mesa/src/amd/vulkan/winsys/null/radv_null_winsys.c	2025-07-27 11:41:09.893797432 +0200
++++ mesa-patched/src/amd/vulkan/winsys/null/radv_null_winsys.c	2025-07-27 12:00:20.857346384 +0200
+@@ -28,6 +28,10 @@
+    [CHIP_OLAND] = {0x6060, 2, true},
+    [CHIP_HAINAN] = {0x6660, 2, true},
+    [CHIP_BONAIRE] = {0x6640, 4, true},
++   [CHIP_LIVERPOOL] = {0x9920, 8, false},
++   [CHIP_LIVERPOOL] = {0x9922, 8, false},
++   [CHIP_LIVERPOOL] = {0x9923, 8, false},
++   [CHIP_GLADIUS] = {0x9924, 8, false},
+    [CHIP_KAVERI] = {0x1304, 2, false},
+    [CHIP_KABINI] = {0x9830, 2, false},
+    [CHIP_HAWAII] = {0x67A0, 16, true},
+@@ -75,6 +79,10 @@
+ 
+          if (gpu_info->family >= CHIP_GFX1200)
+             gpu_info->gfx_level = GFX12;
++         else if (i == CHIP_GLADIUS)
++            gpu_info->gfx_level = GFX7;
++         else if (i == CHIP_LIVERPOOL)
++            gpu_info->gfx_level = GFX7;
+          else if (gpu_info->family >= CHIP_NAVI31)
+             gpu_info->gfx_level = GFX11;
+          else if (i >= CHIP_NAVI21)
+diff -ruN mesa/src/gallium/winsys/radeon/drm/radeon_drm_winsys.c mesa-patched/src/gallium/winsys/radeon/drm/radeon_drm_winsys.c
+--- mesa/src/gallium/winsys/radeon/drm/radeon_drm_winsys.c	2025-07-27 11:41:11.331802675 +0200
++++ mesa-patched/src/gallium/winsys/radeon/drm/radeon_drm_winsys.c	2025-07-27 11:44:26.303751615 +0200
+@@ -262,6 +262,8 @@
+    case CHIP_KAVERI:
+    case CHIP_KABINI:
+    case CHIP_HAWAII:
++   case CHIP_GLADIUS:
++   case CHIP_LIVERPOOL:
+       ws->info.gfx_level = GFX7;
+       break;
+    }
+@@ -473,6 +475,8 @@
+    case CHIP_OLAND:
+    case CHIP_BONAIRE:
+    case CHIP_KAVERI:
++   case CHIP_GLADIUS:
++   case CHIP_LIVERPOOL:
+       ws->info.max_tcc_blocks = 4;
+       break;
+    case CHIP_PITCAIRN:
+@@ -501,9 +505,11 @@
+       case CHIP_TAHITI:
+       case CHIP_PITCAIRN:
+       case CHIP_BONAIRE:
++      case CHIP_LIVERPOOL:
+          ws->info.max_se = 2;
+          break;
+       case CHIP_HAWAII:
++      case CHIP_GLADIUS:
+          ws->info.max_se = 4;
+          break;
+       }
+@@ -609,6 +615,8 @@
+    case CHIP_HAINAN:
+    case CHIP_BONAIRE:
+    case CHIP_KAVERI:
++   case CHIP_GLADIUS:
++   case CHIP_LIVERPOOL:
+       ws->info.l2_cache_size = ws->info.num_tcc_blocks * 128 * 1024;
+       break;
+    default:;
+diff -ruN mesa/src/gallium/winsys/radeon/drm/radeon_surface.c mesa-patched/src/gallium/winsys/radeon/drm/radeon_surface.c
+--- mesa/src/gallium/winsys/radeon/drm/radeon_surface.c	2025-07-27 11:41:11.331802675 +0200
++++ mesa-patched/src/gallium/winsys/radeon/drm/radeon_surface.c	2025-07-27 11:44:26.304761712 +0200
+@@ -78,6 +78,8 @@
+     CHIP_OLAND,
+     CHIP_HAINAN,
+     CHIP_BONAIRE,
++    CHIP_LIVERPOOL,
++    CHIP_GLADIUS,
+     CHIP_KAVERI,
+     CHIP_KABINI,
+     CHIP_HAWAII,

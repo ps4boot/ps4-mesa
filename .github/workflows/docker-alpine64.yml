@@ -1,0 +1,252 @@
+name: Build Mesa64 on alpine docker
+
+on:
+  workflow_dispatch:
+
+jobs:
+  cache-mesa:
+    runs-on: ubuntu-latest
+    name: Cache mesa/libdrm
+
+    steps:
+      - name: Fetch latest release tags
+        id: fetch-latest-release
+        run: |
+          latest_tag=$(curl -s "https://gitlab.freedesktop.org/api/v4/projects/176/repository/tags" | jq -r '.[0].name')
+          echo "LATEST_TAG=$latest_tag" >> $GITHUB_ENV
+          latestdrm_tag=$(curl -s "https://gitlab.freedesktop.org/api/v4/projects/177/repository/tags" | jq -r '.[0].name')
+          echo "LATESTDRM_TAG=$latestdrm_tag" >> $GITHUB_ENV
+
+      - name: Cache Mesa repository
+        id: cache-mesa
+        uses: actions/cache@v4
+        with:
+          path: ./mesa
+          key: ${{ env.LATEST_TAG }}
+
+      - name: Clone Mesa repository if not cached
+        if: steps.cache-mesa.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p mesa
+          curl -L "https://gitlab.freedesktop.org/mesa/mesa/-/archive/${{ env.LATEST_TAG }}/${{ env.LATEST_TAG }}.tar.gz" | tar -xzvf - -C mesa --strip-components=1
+
+      - name: Cache libdrm repository
+        id: cache-libdrm
+        uses: actions/cache@v4
+        with:
+          path: ./libdrm
+          key: ${{ env.LATESTDRM_TAG }}
+
+      - name: Clone libdrm repository if not cached
+        if: steps.cache-libdrm.outputs.cache-hit != 'true'
+        run: |
+         mkdir -p libdrm
+         curl -L "https://gitlab.freedesktop.org/mesa/drm/-/archive/${{ env.LATESTDRM_TAG }}/drm-${{ env.LATESTDRM_TAG }}.tar.gz" | tar -xzvf - -C libdrm --strip-components=1
+
+  build-lib32mesa-ps4:
+    needs: cache-mesa
+    runs-on: ubuntu-latest
+    name: Build Mesa and Components for PS4
+
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+            sudo apt install -y \
+            autoconf \
+            automake \
+            libtool \
+            zstd
+
+      - name: Fetch latest release tags
+        id: fetch-latest-release
+        run: |
+          latest_tag=$(curl -s "https://gitlab.freedesktop.org/api/v4/projects/176/repository/tags" | jq -r '.[0].name')
+          echo "LATEST_TAG=$latest_tag" >> $GITHUB_ENV
+          latestdrm_tag=$(curl -s "https://gitlab.freedesktop.org/api/v4/projects/177/repository/tags" | jq -r '.[0].name')
+          echo "LATESTDRM_TAG=$latestdrm_tag" >> $GITHUB_ENV
+
+      - name: Restore Mesa repository cache
+        id: restore-mesa
+        uses: actions/cache@v4
+        with:
+          path: ./mesa
+          key: ${{ env.LATEST_TAG }}
+
+      - name: Restore libdrm repository cache
+        id: restore-libdrm
+        uses: actions/cache@v4
+        with:
+          path: ./libdrm
+          key: ${{ env.LATESTDRM_TAG }}
+
+      - name: Cache docker image
+        id: cache-docker
+        uses: actions/cache@v4
+        with:
+          path: docker64-alpine.zst
+          key: docker-alpine-64
+
+
+      - name: Copy patches
+        working-directory: ./patches
+        run: |
+          cp mesa.patch ../mesa
+          cp libdrm.patch ../libdrm
+
+      - name: Patch Mesa
+        working-directory: ./mesa
+        run: |
+          patch  -Np1 < mesa.patch
+
+      - name: Patch libdrm
+        working-directory: ./libdrm
+        run: |
+          patch  -Np1 < libdrm.patch
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Load docker image from cache
+        if: steps.cache-docker.outputs.cache-hit == 'true'
+        run: |
+          zstd -T0 -d docker64-alpine.zst -c | docker load
+
+      - name: Build 64-bit Docker container if not cached
+        if: steps.cache-docker.outputs.cache-hit != 'true'
+        run: |
+          docker build -t mesa -f Dockerfile.alpine64 .
+          docker save mesa | zstd -19 -T0 > docker64-alpine.zst
+
+      - name: Upload docker64-alpine.zst as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker64-alpine.zst
+          path: docker64-alpine.zst
+
+      - name: Build Mesa/libdrm in Docker container
+        run: |
+          docker run \
+            --rm \
+            -v ${{ github.workspace }}/mesa:/mesa \
+            -w /mesa \
+            mesa \
+            bash -c "
+            mkdir -p build64 && \
+            meson setup build64 \
+            --buildtype=release \
+            -Dprefix=/usr \
+            -Dplatforms=x11,wayland \
+            -Dvulkan-beta=true \
+            -Dvulkan-drivers=amd,swrast,virtio \
+            -Dvulkan-layers=device-select,overlay,screenshot \
+            -Dbuild-aco-tests=true \
+            -Dgallium-rusticl=true \
+            -Dgallium-extra-hud=true \
+            -Dgallium-drivers=radeonsi,r600,zink,virgl,softpipe,llvmpipe \
+            -Dgallium-vdpau=enabled \
+            -Dgallium-va=enabled \
+            -Dopengl=true \
+            -Dglx=auto \
+            -Dgles1=enabled \
+            -Dgles2=enabled \
+            -Degl=enabled \
+            -Dllvm=auto \
+            -Dlmsensors=enabled \
+            -Dtools=glsl,nir \
+            -Dgbm=enabled \
+            -Dlibunwind=enabled \
+            -Dvideo-codecs=all \
+            -Dlegacy-x11=dri2 \
+            -Dzstd=enabled \
+            -Damd-use-llvm=true \
+            -Dspirv-to-dxil=true \
+            -Dstatic-libclc=all \
+            -Dmesa-clc=enabled \
+            -Dinstall-mesa-clc=true \
+            -Dinstall-precomp-compiler=true \
+            -Dprecomp-compiler=enabled \
+            -Dmicrosoft-clc=disabled \
+            -Dvalgrind=enabled \
+            -Dshader-cache=enabled \
+            -Dshader-cache-max-size=8G \
+            -Dglvnd=disabled && \
+            meson configure build64 && \
+            ninja -C build64 && \
+            DESTDIR='/mesa/package-root' ninja -C build64 install && \
+            chown -R 1001:1001 /mesa"
+
+          docker run \
+            --rm \
+            -v ${{ github.workspace }}/libdrm:/libdrm \
+            -w /libdrm \
+            mesa \
+            bash -c "
+              mkdir -p build64 && \
+              meson setup build64 -Dsysconfdir=/etc -Dprefix=/usr --buildtype plain -Dudev=true -Dvalgrind=enabled -Dintel=enabled && \
+              meson configure build64 && \
+              ninja -C build64 && \
+              DESTDIR='/libdrm/package-root' ninja -C build64 install && \
+              chown -R 1001:1001 /libdrm"
+
+      - name: Compress install directory
+        working-directory: ./mesa/package-root
+        run: |
+          tar -I 'zstd -19 -T0' -cf ../../${{ env.LATEST_TAG }}-build64-PS4.tzst *
+
+      - name: Upload mesa-build64.tar.zst as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.LATEST_TAG }}-build64-PS4.tzst
+          path: ${{ env.LATEST_TAG }}-build64-PS4.tzst
+
+      - name: Compress install directory
+        working-directory: ./libdrm/package-root
+        run: |
+          tar -I 'zstd -19 -T0' -cf ../../${{ env.LATESTDRM_TAG }}-build64-PS4.tzst *
+
+      - name: Upload libdrm-build64.tar.zst as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.LATESTDRM_TAG }}-build64-PS4.tzst
+          path: ${{ env.LATESTDRM_TAG }}-build64-PS4.tzst
+
+      - name: Create control file/DEB
+        working-directory: ./mesa
+        run: |
+          mkdir -p package-root/DEBIAN
+          cat <<EOF > package-root/DEBIAN/control
+          Package: ${{ env.LATEST_TAG }}
+          Version: 42069-${{ env.LATEST_TAG }}-PS4
+          Architecture: amd64
+          Maintainer: Your Name <youremail@example.com>
+          Description: Mesa graphics library for PS4
+          EOF
+          dpkg-deb --build package-root ../${{ env.LATEST_TAG }}-PS4.deb
+
+      - name: Upload mesa.deb as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.LATEST_TAG }}-PS4.deb
+          path: ${{ env.LATEST_TAG }}-PS4.deb
+
+      - name: Create control file/DEB
+        working-directory: ./libdrm
+        run: |
+          mkdir -p package-root/DEBIAN
+          cat <<EOF > package-root/DEBIAN/control
+          Package: ${{ env.LATESTDRM_TAG }}
+          Version: 42069-${{ env.LATESTDRM_TAG }}-PS4
+          Architecture: amd64
+          Maintainer: Your Name <youremail@example.com>
+          Description: libdrm for PS4
+          EOF
+          dpkg-deb --build package-root ../${{ env.LATESTDRM_TAG }}-PS4.deb
+
+      - name: Upload libdrm.deb as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.LATESTDRM_TAG }}-PS4.deb
+          path: ${{ env.LATESTDRM_TAG }}-PS4.deb
